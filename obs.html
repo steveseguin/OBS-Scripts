@@ -897,6 +897,7 @@
       let vdoNinjaConnected = false;
       let activeStreams = {};
       let obsScenes = [];
+      let obsScenesLoaded = false;
       let requestCallbacks = {};
       let vdoNinjaLastActivityTime = 0;
       let vdoNinjaConnectionCheckTimer = null;
@@ -1229,6 +1230,18 @@
         saveSettings();
       }
 
+      // Retain a saved mapping target until OBS can validate its scene name.
+      function restoreMappingSceneSelection(selectElement, sceneName) {
+        if (!obsScenesLoaded && sceneName &&
+            !Array.from(selectElement.options).some(option => option.value === sceneName)) {
+          const pendingOption = document.createElement("option");
+          pendingOption.value = sceneName;
+          pendingOption.textContent = sceneName;
+          selectElement.appendChild(pendingOption);
+        }
+        selectElement.value = sceneName || "";
+      }
+
       function addNewStreamMapping(
         streamId = "",
         label = "",
@@ -1308,12 +1321,7 @@
         const sceneDropdown = mappingDiv.querySelector(".mapping-scene-name");
 
         populateSceneDropdown(obsScenes, sceneDropdown); 
-        if (
-          sceneName &&
-          obsScenes.some((scene) => scene.sceneName === sceneName)
-        ) {
-          sceneDropdown.value = sceneName; 
-        }
+        restoreMappingSceneSelection(sceneDropdown, sceneName);
 
         const removeBtn = mappingDiv.querySelector(".remove-mapping-btn");
         removeBtn.addEventListener("click", () => {
@@ -2212,14 +2220,7 @@
 
         mappingSceneSelects.forEach((select, index) => {
           populateSceneDropdown(obsScenes, select); 
-          if (
-            currentMappingSceneValues[index] &&
-            obsScenes.some(
-              (scene) => scene.sceneName === currentMappingSceneValues[index]
-            )
-          ) {
-            select.value = currentMappingSceneValues[index];
-          }
+          restoreMappingSceneSelection(select, currentMappingSceneValues[index]);
         });
         updateOtherScenesList(); 
       }
@@ -2683,6 +2684,7 @@
         );
         updateStreamList(); 
 
+        obsScenesLoaded = false;
         obsScenes = [];
         updateSceneDropdowns();
         updateOtherScenesList(); 
@@ -2700,7 +2702,8 @@
           const settings = settingsJson ? JSON.parse(settingsJson) : {};
 
           if (response && response.scenes) {
-            obsScenes = response.scenes; 
+            obsScenes = response.scenes;
+            obsScenesLoaded = true;
             logMessage(`Fetched ${obsScenes.length} scenes from OBS.`, "logMessages.obs.fetchedScenesCount", { count: obsScenes.length });
 
             updateSceneDropdowns(); 
@@ -2747,41 +2750,17 @@
 
             updateOtherScenesList(); 
 
-            const savedMappingsJson =
-              localStorage.getItem("obsNinjaStreamMappings");
-            if (savedMappingsJson) {
-              try {
-                const mappings = JSON.parse(savedMappingsJson);
-                document
-                  .querySelectorAll(".mapping-scene-name")
-                  .forEach((select, index) => {
-                    if (mappings[index] && mappings[index].sceneName) {
-                      if (
-                        obsScenes.some(
-                          (scene) =>
-                            scene.sceneName === mappings[index].sceneName
-                        )
-                      ) {
-                        select.value = mappings[index].sceneName;
-                      }
-                    }
-                  });
-              } catch (e) {
-                logMessage(
-                  `Error applying saved scene selections to stream mappings: ${e.message}`,
-                  "logMessages.obs.errorApplyingSavedMappings", { message: e.message }
-                );
-              }
-            }
             obsSceneNameInput.value = obsSceneSelect.value; 
           } else {
             logMessage("Failed to fetch OBS scenes or no scenes returned.", "logMessages.obs.failedToFetchScenes");
+            obsScenesLoaded = false;
             obsScenes = [];
             updateSceneDropdowns();
             updateOtherScenesList();
           }
         } catch (error) {
           logMessage(`Error fetching OBS scenes: ${error.message}`, "logMessages.obs.errorFetchingScenes", { message: error.message });
+          obsScenesLoaded = false;
           obsScenes = []; 
           updateSceneDropdowns();
           updateOtherScenesList();

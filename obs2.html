@@ -1017,7 +1017,8 @@
       let obsConnected = false;
       let vdoNinjaConnected = false;
       let activeStreams = {}; 
-      let obsScenes = []; 
+      let obsScenes = [];
+      let obsScenesLoaded = false;
       let requestCallbacks = {}; 
       let vdoNinjaLastActivityTime = 0;
       let vdoNinjaConnectionCheckTimer = null;
@@ -1369,6 +1370,18 @@
       }
 
       // Add new stream mapping to UI
+      // Retain a saved mapping target until OBS can validate its scene name.
+      function restoreMappingSceneSelection(selectElement, sceneName) {
+        if (!obsScenesLoaded && sceneName &&
+            !Array.from(selectElement.options).some(option => option.value === sceneName)) {
+          const pendingOption = document.createElement("option");
+          pendingOption.value = sceneName;
+          pendingOption.textContent = sceneName;
+          selectElement.appendChild(pendingOption);
+        }
+        selectElement.value = sceneName || "";
+      }
+
       function addNewStreamMapping(
         streamId = "",
         label = "",
@@ -1436,12 +1449,7 @@
         }
         const sceneDropdown = mappingDiv.querySelector(".mapping-scene-name");
         populateSceneDropdown(obsScenes, sceneDropdown, "streamIdMappings.selectSceneOption"); 
-        if (
-          sceneName &&
-          obsScenes.some((scene) => scene.sceneName === sceneName)
-        ) {
-          sceneDropdown.value = sceneName; 
-        }
+        restoreMappingSceneSelection(sceneDropdown, sceneName);
         const removeBtn = mappingDiv.querySelector(".remove-mapping-btn");
         removeBtn.addEventListener("click", () => {
           mappingDiv.remove();
@@ -2453,7 +2461,7 @@
         document.querySelectorAll(".mapping-scene-name").forEach(select => {
             const oldValue = select.value;
             populateSceneDropdown(obsScenes, select, "streamIdMappings.selectSceneOption");
-            if (oldValue && obsScenes.some(s => s.sceneName === oldValue)) select.value = oldValue; else select.value = "";
+            restoreMappingSceneSelection(select, oldValue);
         });
         
         document.querySelectorAll(".layout-config-item").forEach(layoutItemDiv => {
@@ -2871,6 +2879,7 @@
           (stream) => (stream.sourceCreated = false)
         );
         updateStreamList(); 
+        obsScenesLoaded = false;
         obsScenes = [];
         updateSceneDropdowns();
       }
@@ -2885,16 +2894,19 @@
         try {
           const response = await sendRequest("GetSceneList");
           if (response && response.scenes) {
-            obsScenes = response.scenes; 
+            obsScenes = response.scenes;
+            obsScenesLoaded = true;
             logMessage(`Fetched ${obsScenes.length} scenes from OBS.`, "logMessages.obs.fetchedScenesCount", { count: obsScenes.length });
             updateSceneDropdowns(); 
           } else {
             logMessage("Failed to fetch OBS scenes or no scenes returned.", "logMessages.obs.failedToFetchScenes");
+            obsScenesLoaded = false;
             obsScenes = [];
             updateSceneDropdowns();
           }
         } catch (error) {
           logMessage(`Error fetching OBS scenes: ${error.message}`, "logMessages.obs.errorFetchingScenes", { message: error.message });
+          obsScenesLoaded = false;
           obsScenes = []; 
           updateSceneDropdowns();
         }
